@@ -66,6 +66,8 @@ type UI struct {
 	defaultSortBy           string
 	defaultSortOrder        string
 	exportName              string
+	archiveName             string
+	archiveGzip             bool
 	devices                 []*device.Device
 	selectedTextColor       tcell.Color
 	selectedBackgroundColor tcell.Color

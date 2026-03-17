@@ -19,7 +19,7 @@ func (ui *UI) keyPressed(key *tcell.EventKey) *tcell.EventKey {
 		return nil
 	}
 
-	if ui.pages.HasPage("file") || ui.pages.HasPage("export") {
+	if ui.pages.HasPage("file") || ui.pages.HasPage("export") || ui.pages.HasPage("archive") {
 		return key // send event to primitive
 	}
 	if ui.filtering || ui.typeFiltering {
@@ -45,7 +45,8 @@ func (ui *UI) keyPressed(key *tcell.EventKey) *tcell.EventKey {
 
 	if ui.pages.HasPage("progress") ||
 		ui.pages.HasPage("deleting") ||
-		ui.pages.HasPage("emptying") {
+		ui.pages.HasPage("emptying") ||
+		ui.pages.HasPage("archiving") {
 		return key
 	}
 
@@ -298,6 +299,9 @@ func (ui *UI) handleMainActions(key *tcell.EventKey) *tcell.EventKey {
 	case 'E':
 		ui.confirmExport()
 		return nil
+	case 'A':
+		ui.handleArchive()
+		return nil
 	case 's', 'C', 'n', 'M':
 		ui.handleSorting(key)
 	case '/':
@@ -425,6 +429,34 @@ func (ui *UI) handleMark() {
 	}
 
 	ui.fileItemMarked(row)
+}
+
+func (ui *UI) handleArchive() {
+	if ui.currentDir == nil {
+		return
+	}
+	if ui.isInArchive() {
+		ui.showErr("Archiving is not supported inside archives", nil)
+		return
+	}
+	if ui.noDelete {
+		previousHeaderText := ui.header.GetText(false)
+		ui.header.SetText(" Archiving is disabled!")
+		go func() {
+			time.Sleep(2 * time.Second)
+			ui.app.QueueUpdateDraw(func() {
+				ui.header.Clear()
+				ui.header.SetText(previousHeaderText)
+			})
+		}()
+		return
+	}
+	row, column := ui.table.GetSelection()
+	selectedFile, ok := ui.table.GetCell(row, column).GetReference().(fs.Item)
+	if !ok || selectedFile == ui.currentDir.GetParent() {
+		return
+	}
+	ui.confirmArchive()
 }
 
 func (ui *UI) ignoreItem() {

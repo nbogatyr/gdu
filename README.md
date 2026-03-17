@@ -95,6 +95,7 @@ Basic list of actions in interactive mode (show help modal for more):
   ← or h                              Go to parent directory
   d                                   Delete the selected file or directory
   e                                   Empty the selected directory
+  A                                   Archive file or directory to tar/tgz
   n                                   Sort by name
   s                                   Sort by size
   c                                   Show number of items in directory

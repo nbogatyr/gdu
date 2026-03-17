@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"runtime/debug"
 	"strconv"
@@ -20,6 +21,7 @@ import (
 
 	"github.com/dundee/gdu/v5/build"
 	"github.com/dundee/gdu/v5/pkg/analyze"
+	"github.com/dundee/gdu/v5/pkg/archive"
 	"github.com/dundee/gdu/v5/pkg/device"
 	"github.com/dundee/gdu/v5/pkg/fs"
 	"github.com/dundee/gdu/v5/report"
@@ -404,6 +406,93 @@ func (ui *UI) exportAnalysis() {
 		}
 		if _, err = buff.WriteTo(file); err != nil {
 			ui.showErrFromGo("Error writing to file", err)
+			return
+		}
+	}()
+}
+
+func (ui *UI) confirmArchive() *tview.Form {
+	row, column := ui.table.GetSelection()
+	selectedItem := ui.table.GetCell(row, column).GetReference().(fs.Item)
+
+	defaultName := selectedItem.GetName() + ".tar"
+	ui.archiveName = defaultName
+	ui.archiveGzip = false
+
+	form := tview.NewForm().
+		AddInputField("File name", defaultName, 30, nil, func(v string) {
+			ui.archiveName = v
+		}).
+		AddCheckbox("Gzip compression (.tgz)", false, func(checked bool) {
+			ui.archiveGzip = checked
+		}).
+		AddButton("Archive", ui.archiveItem).
+		SetButtonsAlign(tview.AlignCenter)
+	form.SetBorder(true).
+		SetTitle(" Archive to tar ").
+		SetInputCapture(func(key *tcell.EventKey) *tcell.EventKey {
+			if key.Key() == tcell.KeyEsc {
+				ui.pages.RemovePage("archive")
+				ui.app.SetFocus(ui.table)
+				return nil
+			}
+			return key
+		})
+	flex := modal(form, 50, 9)
+	ui.pages.AddPage("archive", flex, true, true)
+	ui.app.SetFocus(form)
+	return form
+}
+
+func (ui *UI) archiveItem() {
+	ui.pages.RemovePage("archive")
+
+	// Validate archive name: reject path separators and parent traversals
+	cleanName := filepath.Clean(ui.archiveName)
+	if cleanName != filepath.Base(cleanName) || strings.Contains(cleanName, "..") {
+		ui.showErr("Invalid archive name: must be a plain filename", nil)
+		return
+	}
+
+	row, column := ui.table.GetSelection()
+	selectedItem := ui.table.GetCell(row, column).GetReference().(fs.Item)
+	sourcePath := selectedItem.GetPath()
+	destPath := filepath.Join(ui.currentDir.GetPath(), cleanName)
+
+	// Prevent writing the archive inside the directory being archived
+	if strings.HasPrefix(destPath, sourcePath+string(filepath.Separator)) {
+		ui.showErr("Cannot create archive inside the directory being archived", nil)
+		return
+	}
+
+	text := tview.NewTextView().
+		SetText("Archiving " + tview.Escape(selectedItem.GetName()) + "...").
+		SetTextAlign(tview.AlignCenter)
+	text.SetBorder(true).SetTitle(" Archiving ")
+	flex := modal(text, 50, 3)
+	ui.pages.AddPage("archiving", flex, true, true)
+
+	go func() {
+		var err error
+		defer ui.app.QueueUpdateDraw(func() {
+			ui.pages.RemovePage("archiving")
+			if err == nil {
+				ui.rescanDir()
+			}
+		})
+		if ui.done != nil {
+			defer func() {
+				ui.done <- struct{}{}
+			}()
+		}
+
+		if ui.archiveGzip {
+			err = archive.CreateTarGz(sourcePath, destPath)
+		} else {
+			err = archive.CreateTar(sourcePath, destPath)
+		}
+		if err != nil {
+			ui.showErrFromGo("Error creating archive", err)
 			return
 		}
 	}()
